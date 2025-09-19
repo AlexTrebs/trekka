@@ -1,4 +1,3 @@
-// src/lib/server/drive.ts
 import { google } from 'googleapis';
 import { GOOGLE_API_KEY } from '$env/static/private';
 
