@@ -1,4 +1,7 @@
-# Trekka
+<h1 align="center">
+  Trekka
+  <img width="300px" src="https://raw.githubusercontent.com/AlexTrebs/trekka/refs/heads/main/static/trekka-icon.png" />
+</h1>
 
 Trekka is an interactive photo map web application built with SvelteKit, MapLibre GL, and Google Drive API. 
 
