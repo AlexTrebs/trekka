@@ -45,7 +45,7 @@ pnpm install
 
 Run the server:
 ```bash
-pnpm start
+pnpm dev
 ```
 
 Open your browser at http://localhost:5173.
