@@ -55,4 +55,16 @@ Open your browser at http://localhost:5173.
 * `pnpm dev` – Run development server
 * `pnpm build` – Build production app
 * `pnpm preview` – Preview production build
-* 
+* `pnpm prod` – Run prod node server
+
+## Google Drive Integration
+
+The app reads geotagged images from a Google Drive folder using a service account:
+* Fetch metadata via `/api/photos`
+* Serve individual images via `/api/photos/image/[fileId]`
+
+The metadata includes:
+* ID: Google Drive file ID
+* Name: File name
+* Taken At: Formatted timestamp
+* Location: Longitude & Latitude
