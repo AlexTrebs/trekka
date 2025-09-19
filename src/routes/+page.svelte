@@ -90,7 +90,7 @@
           },
         },
         layers: [
-          { id: 'Satellite', type: 'raster', source: 'satellite' }
+          { id: 'Satellite', type: 'raster', source: 'satellite' },
         ],
         light: { anchor: 'map', position: [10, sunRotation, lightRotation] },
         sky: {
