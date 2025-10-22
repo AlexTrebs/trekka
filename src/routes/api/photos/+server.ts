@@ -3,6 +3,12 @@ import type { FeatureCollection, Point } from "geojson";
 import { drive } from "$lib/server/drive";
 import { GOOGLE_FOLDER_ID } from "$env/static/private";
 
+/**
+ * Format a timestamp string into a human-readable "Weekday, D Month YYYY, HH:MM" representation.
+ *
+ * @param timestamp - Either an ISO 8601 UTC timestamp ending with `Z` (parsed as UTC) or a custom `"YYYY:MM:DD HH:MM:SS"` string (parsed in local time).
+ * @returns The formatted date/time string, e.g. `Sunday, 5 October 2025, 14:07`.
+ */
 function formatTimestamp(timestamp: string): string {
   let date: Date;
 

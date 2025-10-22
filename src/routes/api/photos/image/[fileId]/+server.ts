@@ -12,6 +12,11 @@ type CacheEntry = {
 
 const cache = new QuickLRU<string, CacheEntry>({ maxSize: 200 });
 
+/**
+ * Removes entries from the in-memory cache whose `expires` timestamp is less than or equal to the current time.
+ *
+ * Performs an in-place cleanup of expired CacheEntry items stored in the module-level LRU cache.
+ */
 function cleanExpiredCache() {
   const now = Date.now();
   for (const [key, value] of cache.entries()) {
@@ -19,6 +24,12 @@ function cleanExpiredCache() {
   }
 }
 
+/**
+ * Store a CacheEntry in the in-memory LRU cache, removing any expired entries beforehand.
+ *
+ * @param key - Cache key (typically the fileId)
+ * @param value - CacheEntry containing `data`, `contentType`, and `expires` timestamp
+ */
 function setCacheItem(key: string, value: CacheEntry) {
   cleanExpiredCache();
   cache.set(key, value);
