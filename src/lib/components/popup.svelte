@@ -63,11 +63,6 @@
     </div>
 
     <div class="popup-body">
-      {#if loadingImage}
-        <div class="loading-overlay">
-          <div class="spinner"></div>
-        </div>
-      {/if}
       <a
         class="image-wrapper"
         href={`/api/photos/image/${selectedPhoto.id}`}
@@ -77,6 +72,11 @@
         aria-label="Open full image"
         draggable="false"
       >
+        {#if loadingImage}
+          <div class="loading-overlay">
+            <div class="spinner"></div>
+          </div>
+        {/if}
         <img
           src={`/api/photos/image/${selectedPhoto.id}`}
           alt={selectedPhoto.name}
@@ -162,6 +162,7 @@
   }
 
   .image-wrapper {
+    position: relative;
     display: flex;
     justify-content: center;
     width: 100%;
@@ -182,7 +183,7 @@
     align-items: center;
     text-align: center;
   }
-  
+
   .photo-details p {
     font-weight: 500;
     font-family: inherit;
@@ -223,13 +224,12 @@
   /* Loading overlay */
   .loading-overlay {
     position: absolute;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.8);
+    inset: 0; /* shorthand for top/left/right/bottom: 0 */
+    background: rgba(0, 0, 0, 0.6); /* slightly transparent grey */
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 1;
   }
 
   .spinner {
