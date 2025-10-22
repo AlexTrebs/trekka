@@ -1,71 +1,104 @@
-import type { RequestHandler } from '@sveltejs/kit';
-import { initDrive } from '$lib/server/drive';
-import { buffer } from 'stream/consumers';
+import type { RequestHandler } from "@sveltejs/kit";
+import { drive } from "$lib/server/drive";
+import { PassThrough } from "stream";
+import { pipeline } from "stream/promises";
+import QuickLRU from "quick-lru";
 
-// Simple in-memory cache
-const cache = new Map<string, { data: Uint8Array<ArrayBuffer>; contentType: string; expires: number }>();
+type CacheEntry = {
+  data: Uint8Array;
+  contentType: string;
+  expires: number;
+};
 
-// Helper to guess MIME type from filename
-function getMimeType(filename: string | undefined): string {
-  if (!filename) return 'image/jpeg'; // default fallback
+const cache = new QuickLRU<string, CacheEntry>({ maxSize: 200 });
 
-  const ext = filename.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'png': return 'image/png';
-    case 'jpg':
-    case 'jpeg': return 'image/jpeg';
-    case 'gif': return 'image/gif';
-    case 'webp': return 'image/webp';
-    default: return 'image/jpeg';
+function cleanExpiredCache() {
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (value.expires <= now) cache.delete(key);
   }
 }
 
+function setCacheItem(key: string, value: CacheEntry) {
+  cleanExpiredCache();
+  cache.set(key, value);
+}
+
+// optional background cleanup every 10 mins (safe for long-lived processes)
+setInterval(cleanExpiredCache, 10 * 60 * 1000);
+
 export const GET: RequestHandler = async ({ params }) => {
-  const fileId = params.fileId;
+  const start = performance.now();
+  const fileId = params.fileId!;
   const now = Date.now();
 
-  // Serve from cache if available and fresh
+  console.time(`[Image] ${fileId}`);
+
   const cached = cache.get(fileId);
   if (cached && cached.expires > now) {
-    console.log(cached.contentType);
-    return new Response(cached.data, {
+    console.timeEnd(`[Image] ${fileId}`);
+    return new Response(new Blob([cached.data.buffer as ArrayBuffer]), {
       status: 200,
       headers: {
-        'Content-Type': cached.contentType,
-        'Cache-Control': 'public, max-age=3600',
-        'X-Cache': 'HIT',
-        'Content-Disposition': 'inline' 
-      }
+        "Content-Type": cached.contentType,
+        "Cache-Control": "public, max-age=3600",
+        "X-Cache": "HIT",
+        "X-LoadTime": `${(performance.now() - start).toFixed(1)}ms`,
+        "Content-Disposition": "inline",
+      },
     });
   }
 
-  // Not cached or expired then fetch from Google Drive
-  const drive = initDrive();
+  console.debug(`[Image] Cache MISS for ${fileId} – fetching from Drive…`);
+
+  const driveStart = performance.now();
+
   const driveRes = await drive.files.get(
-    { fileId, alt: 'media' },
-    { responseType: 'stream' }
+    { fileId, alt: "media" },
+    { responseType: "stream" },
+  );
+  console.debug(
+    `[Image] Drive responded in ${(performance.now() - driveStart).toFixed(1)}ms`,
   );
 
-  const dataBuffer = await buffer(driveRes.data);
-  const data = new Uint8Array(dataBuffer);
+  const contentType = driveRes.headers["content-type"] || "image/jpeg";
+  const pass = new PassThrough();
+  const chunks: Buffer[] = [];
 
-  const fileName = (driveRes.data as any)?.name; // or fetch metadata separately if needed
-  const contentType = getMimeType(fileName);
+  driveRes.data.on("data", (chunk) => chunks.push(chunk));
 
-  // Store in cache (1 hour TTL)
-  cache.set(fileId, {
-    data,
-    contentType,
-    expires: now + 3600 * 1000
-  });
+  const streamStart = performance.now();
+  pipeline(driveRes.data, pass)
+    .then(() => {
+      console.debug(
+        `[Image] Stream finished in ${(performance.now() - streamStart).toFixed(1)}ms`,
+      );
+    })
+    .catch((err) => console.error("[Image] Stream error:", err));
 
-  return new Response(data, {
-    status: 200,
+  // Cache save async
+  (async () => {
+    const concatStart = performance.now();
+    const data = Buffer.concat(chunks);
+    console.debug(
+      `[Image] Buffer.concat took ${(performance.now() - concatStart).toFixed(1)}ms`,
+    );
+
+    setCacheItem(fileId, {
+      data,
+      contentType,
+      expires: now + 3600 * 1000,
+    });
+  })();
+
+  console.timeEnd(`[Image] ${fileId}`);
+
+  return new Response(pass as any, {
     headers: {
-      'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=3600',
-      'X-Cache': 'MISS',
-      'Content-Disposition': 'inline' 
-    }
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=3600",
+      "X-Cache": "MISS",
+      "Content-Disposition": "inline",
+    },
   });
 };
