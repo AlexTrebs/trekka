@@ -1,104 +1,103 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { drive } from "$lib/server/drive";
-import { PassThrough } from "stream";
-import { pipeline } from "stream/promises";
 import QuickLRU from "quick-lru";
+import { buffer } from "stream/consumers";
+import heicConvert from "heic-convert";
 
 type CacheEntry = {
   data: Uint8Array;
   contentType: string;
   expires: number;
+  fileName: string;
 };
 
-const cache = new QuickLRU<string, CacheEntry>({ maxSize: 200 });
+const cache = new QuickLRU<string, CacheEntry>({ maxSize: 50 });
 
-function cleanExpiredCache() {
-  const now = Date.now();
-  for (const [key, value] of cache.entries()) {
-    if (value.expires <= now) cache.delete(key);
-  }
-}
+// Cleanup expired cache entries
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, entry] of cache.entries()) {
+      if (entry.expires <= now) cache.delete(key);
+    }
+  },
+  10 * 60 * 1000,
+);
 
-function setCacheItem(key: string, value: CacheEntry) {
-  cleanExpiredCache();
-  cache.set(key, value);
-}
+const isHeifLike = (t: string) => /heic|heif/i.test(t);
 
-// optional background cleanup every 10 mins (safe for long-lived processes)
-setInterval(cleanExpiredCache, 10 * 60 * 1000);
-
-export const GET: RequestHandler = async ({ params }) => {
-  const start = performance.now();
+export const GET: RequestHandler = async ({ params, url }) => {
   const fileId = params.fileId!;
+  const fileName = url.searchParams.get("fileName")!;
+  const requestedMime = url.searchParams.get("mimeType")!;
+
+  const start = performance.now();
   const now = Date.now();
 
-  console.time(`[Image] ${fileId}`);
-
+  // --- Cache hit ---
   const cached = cache.get(fileId);
   if (cached && cached.expires > now) {
-    console.timeEnd(`[Image] ${fileId}`);
-    return new Response(new Blob([cached.data.buffer as ArrayBuffer]), {
-      status: 200,
+    console.debug(`[Image] Cache hit: ${fileId}`);
+    return new Response(new Uint8Array(cached.data), {
       headers: {
         "Content-Type": cached.contentType,
+        "Content-Length": String(cached.data.byteLength),
         "Cache-Control": "public, max-age=3600",
-        "X-Cache": "HIT",
-        "X-LoadTime": `${(performance.now() - start).toFixed(1)}ms`,
-        "Content-Disposition": "inline",
+        "Content-Disposition": `inline; filename="${encodeURIComponent(cached.fileName)}"`,
       },
     });
   }
 
-  console.debug(`[Image] Cache MISS for ${fileId} – fetching from Drive…`);
-
-  const driveStart = performance.now();
-
-  const driveRes = await drive.files.get(
-    { fileId, alt: "media" },
-    { responseType: "stream" },
-  );
-  console.debug(
-    `[Image] Drive responded in ${(performance.now() - driveStart).toFixed(1)}ms`,
-  );
-
-  const contentType = driveRes.headers["content-type"] || "image/jpeg";
-  const pass = new PassThrough();
-  const chunks: Buffer[] = [];
-
-  driveRes.data.on("data", (chunk) => chunks.push(chunk));
-
-  const streamStart = performance.now();
-  pipeline(driveRes.data, pass)
-    .then(() => {
-      console.debug(
-        `[Image] Stream finished in ${(performance.now() - streamStart).toFixed(1)}ms`,
-      );
-    })
-    .catch((err) => console.error("[Image] Stream error:", err));
-
-  // Cache save async
-  (async () => {
-    const concatStart = performance.now();
-    const data = Buffer.concat(chunks);
-    console.debug(
-      `[Image] Buffer.concat took ${(performance.now() - concatStart).toFixed(1)}ms`,
+  // --- Fetch from Google Drive ---
+  let driveRes;
+  try {
+    driveRes = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "stream" },
     );
+  } catch (err) {
+    console.error(`[Image] Drive fetch failed for ${fileId}`, err);
+    return new Response("Drive fetch failed", { status: 500 });
+  }
 
-    setCacheItem(fileId, {
-      data,
-      contentType,
-      expires: now + 3600 * 1000,
-    });
-  })();
+  const driveData = await buffer(driveRes.data);
+  console.debug(`[Image] Fetched ${driveData.length.toLocaleString()} bytes`);
 
-  console.timeEnd(`[Image] ${fileId}`);
+  let output = driveData;
+  let finalType = requestedMime;
 
-  return new Response(pass as any, {
+  // --- Convert HEIC/HEIF to JPEG ---
+  if (isHeifLike(requestedMime)) {
+    try {
+      console.debug(`[Image] Converting HEIF → JPEG`);
+      output = await heicConvert({
+        buffer: output,
+        format: "JPEG",
+        quality: 0.9,
+      });
+      finalType = "image/jpeg";
+    } catch (err) {
+      console.error(`[Image] HEIC conversion failed for ${fileName}`, err);
+    }
+  }
+
+  // --- Cache result ---
+  cache.set(fileId, {
+    data: output,
+    contentType: finalType,
+    fileName,
+    expires: now + 3600 * 1000,
+  });
+
+  const totalMs = (performance.now() - start).toFixed(1);
+  console.debug(`[Image] Served ${fileId} (${finalType}) in ${totalMs}ms`);
+
+  return new Response(new Uint8Array(output), {
     headers: {
-      "Content-Type": contentType,
+      "Content-Type": finalType,
+      "Content-Length": String(output.byteLength),
       "Cache-Control": "public, max-age=3600",
-      "X-Cache": "MISS",
-      "Content-Disposition": "inline",
+      "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
     },
   });
 };

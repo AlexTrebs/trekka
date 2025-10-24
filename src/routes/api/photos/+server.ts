@@ -56,7 +56,7 @@ function formatTimestamp(timestamp: string): string {
 export const GET: RequestHandler = async () => {
   const listRes: any = await drive.files.list({
     q: `'${GOOGLE_FOLDER_ID}' in parents`,
-    fields: "files(id,name,createdTime,imageMediaMetadata)",
+    fields: "files(id,name,createdTime,imageMediaMetadata,mimeType)",
     pageSize: 100,
   });
 
@@ -89,6 +89,7 @@ export const GET: RequestHandler = async () => {
           f.imageMediaMetadata.location.longitude,
           f.imageMediaMetadata.location.latitude,
         ],
+        mimetype: f.mimeType,
       },
     })),
   };

@@ -2,6 +2,8 @@
   import type { PhotoProps } from "$lib/types/photo";
 
   export let selectedPhoto: PhotoProps | null = null;
+  export const mimeType = selectedPhoto?.mimeType ?? "image/jpeg";
+  export const fileName = selectedPhoto?.name ?? "";
 
   export let onPrev: () => void;
   export let onNext: () => void;
@@ -30,7 +32,7 @@
       locationData = { city: data.city, country: data.country };
     } catch (err) {
       console.error(err);
-      error = 'Failed to load location';
+      error = "Failed to load location";
       locationData = {};
     } finally {
       locationLoad = false;
@@ -50,14 +52,33 @@
   function handleImageLoad() {
     loadingImage = false;
   }
+
+  function imageUrl(photo: PhotoProps) {
+    const params = new URLSearchParams();
+
+    params.set("mimeType", photo.mimeType ?? "image/jpeg");
+    params.set("mimeType", photo.name ?? "");
+
+    return `/api/photos/image/${photo.id}?${params.toString()}`;
+  }
 </script>
 
 {#if selectedPhoto?.id}
   <div class="popup-panel">
     <div class="top-bar">
       <button class="x-btn" aria-label="Close" on:click={closePopup}>
-        <svg width={24} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M6 6 L18 18 M6 18 L18 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <svg
+          width={24}
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M6 6 L18 18 M6 18 L18 6"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
         </svg>
       </button>
     </div>
@@ -65,7 +86,7 @@
     <div class="popup-body">
       <a
         class="image-wrapper"
-        href={`/api/photos/image/${selectedPhoto.id}`}
+        href={imageUrl(selectedPhoto)}
         target="_blank"
         rel="noopener noreferrer"
         role="button"
@@ -78,7 +99,7 @@
           </div>
         {/if}
         <img
-          src={`/api/photos/image/${selectedPhoto.id}`}
+          src={imageUrl(selectedPhoto)}
           alt={selectedPhoto.name}
           class="popup-img"
           draggable="false"
@@ -92,7 +113,12 @@
         {:else if error}
           <p class="error">{error}</p>
         {:else if locationData.city || locationData.country}
-          <p class="location">Location: {locationData.city}{locationData.city && locationData.country ? ', ' : ''}{locationData.country}</p>
+          <p class="location">
+            Location: {locationData.city}{locationData.city &&
+            locationData.country
+              ? ", "
+              : ""}{locationData.country}
+          </p>
         {/if}
       </div>
     </div>
@@ -116,12 +142,12 @@
     right: 0;
     width: 400px;
     height: 100%;
-    background: rgba(20,20,20,0.95);
+    background: rgba(20, 20, 20, 0.95);
     color: white;
     display: flex;
     flex-direction: column;
     z-index: 1000;
-    box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
     overflow: hidden;
     font-family: inherit;
   }
@@ -173,7 +199,7 @@
     max-width: 100%;
     border-radius: 12px;
     object-fit: contain;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   }
 
   .photo-details {
@@ -206,7 +232,9 @@
     padding: 0.5rem 1rem;
     cursor: pointer;
     font-weight: 600;
-    transition: background 0.2s, transform 0.2s;
+    transition:
+      background 0.2s,
+      transform 0.2s;
   }
 
   .nav-btn:disabled {
@@ -242,10 +270,15 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
-  .taken-at, .location, .loading, .error {
+  .taken-at,
+  .location,
+  .loading,
+  .error {
     margin: 0.25rem 0;
     font-size: 0.95rem;
     opacity: 0.85;
@@ -255,7 +288,10 @@
     color: #ff6b6b;
   }
 
-  .taken-at, .location, .loading, .error {
+  .taken-at,
+  .location,
+  .loading,
+  .error {
     font-weight: 400;
     font-size: 0.95rem;
     font-family: inherit;
@@ -281,7 +317,7 @@
     .bottom-bar {
       position: sticky;
       bottom: 0;
-      background: rgba(20,20,20,0.95);
+      background: rgba(20, 20, 20, 0.95);
       padding: 0.5rem 1rem;
     }
   }
