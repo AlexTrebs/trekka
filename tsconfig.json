@@ -12,20 +12,10 @@
     "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
-      "$lib/*": [
-        "src/lib/*"
-      ],
-      "$lib": [
-        "src/lib"
-      ]
+      "$lib/*": ["src/lib/*"],
+      "$lib": ["src/lib"]
     },
-    "types": [
-      "svelte",
-      "@sveltejs/kit",
-      "vite/client"
-    ]
+    "types": ["svelte", "@sveltejs/kit", "vite/client"]
   },
-  "include": [
-    "src/**/*"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

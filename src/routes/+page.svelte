@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { FeatureCollection, Point } from "geojson";
   import * as maplibregl from "maplibre-gl";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
   import marker from "$lib/assets/marker.png";
   import Popup from "$lib/components/popup.svelte";
@@ -18,6 +18,7 @@
   let hasNext = false;
   let lightRotation = 0;
   let sunRotation = 90;
+  let sunInterval: number;
 
   function updateSunPosition() {
     const now = new Date();
@@ -31,6 +32,12 @@
     const hourAngle = (utcHours / 24) * 360;
     sunRotation = 90 - declination;
     lightRotation = hourAngle;
+    if (map) {
+      map.setLight({
+        anchor: "map",
+        position: [10, sunRotation, lightRotation],
+      });
+    }
   }
 
   function openPhoto(photoId: number) {
@@ -67,6 +74,7 @@
 
   onMount(async () => {
     updateSunPosition();
+    sunInterval = window.setInterval(updateSunPosition, 60_000);
 
     const photoPromise = fetch("/api/photos").then((r) => r.json());
 
@@ -166,9 +174,12 @@
         const preload = new Image();
         preload.src = `/api/photos/image/${recent.properties.id}`;
       }
-
-      setInterval(updateSunPosition, 60_000);
     });
+  });
+
+  onDestroy(() => {
+    if (sunInterval) clearInterval(sunInterval);
+    map?.remove();
   });
 </script>
 

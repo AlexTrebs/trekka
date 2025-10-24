@@ -4,4 +4,5 @@ export interface PhotoProps {
   name?: string | undefined;
   takenAt?: any;
   location: [number, number];
+  mimeType: string | undefined;
 }
