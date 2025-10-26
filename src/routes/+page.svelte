@@ -183,32 +183,30 @@
   });
 </script>
 
-<div id="container">
-  <Starfield />
+<Starfield />
 
-  {#if photos?.features?.length}
-    <button
-      class="recent-btn"
-      on:click={openMostRecent}
-      in:fade={{ duration: 200 }}
-      out:fade={{ duration: 150 }}
-    >
-      Show Most Recent
-    </button>
-  {/if}
+{#if photos?.features?.length}
+  <button
+    class="recent-btn"
+    on:click={openMostRecent}
+    in:fade={{ duration: 200 }}
+    out:fade={{ duration: 150 }}
+  >
+    Show Most Recent
+  </button>
+{/if}
 
-  {#if selectedPhoto}
-    <Popup
-      {selectedPhoto}
-      onPrev={onPrevPhoto}
-      onNext={onNextPhoto}
-      {hasPrev}
-      {hasNext}
-    />
-  {/if}
+{#if selectedPhoto}
+  <Popup
+    {selectedPhoto}
+    onPrev={onPrevPhoto}
+    onNext={onNextPhoto}
+    {hasPrev}
+    {hasNext}
+  />
+{/if}
 
-  <div id="map"></div>
-</div>
+<div id="map"></div>
 
 <style>
   :global(.maplibregl-control-container) {
@@ -221,15 +219,6 @@
     width: 100%;
     height: 100%;
     display: flex;
-  }
-  #container {
-    width: 100%;
-    height: 100%;
-    background: black;
-    display: flex;
-    flex-direction: row-reverse;
-    position: relative;
-    overflow: hidden;
   }
 
   :global(#map canvas) {
@@ -261,39 +250,5 @@
   .recent-btn:hover {
     background: rgba(255, 255, 255, 0.15);
     transform: scale(1.05);
-  }
-
-  /* Global styles */
-  :global(html, body) {
-    overflow: hidden;
-    padding: 0;
-    margin: 0;
-    box-sizing: border-box;
-    height: 100%;
-    width: 100%;
-    font-family:
-      "Inter",
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      Roboto,
-      Oxygen,
-      Ubuntu,
-      Cantarell,
-      "Fira Sans",
-      "Droid Sans",
-      "Helvetica Neue",
-      sans-serif;
-    font-weight: 400;
-    line-height: 1.5;
-    color: #fff;
-  }
-
-  :global(*) {
-    box-sizing: inherit;
-  }
-
-  :global(p, span, div, button, input, textarea, a) {
-    font-family: inherit;
   }
 </style>

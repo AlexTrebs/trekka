@@ -86,7 +86,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
     data: output,
     contentType: finalType,
     fileName,
-    expires: now + 3600 * 1000,
+    expires: now + 10 * 1000 * 12 * 60 * 60,
   });
 
   const totalMs = (performance.now() - start).toFixed(1);
