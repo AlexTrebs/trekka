@@ -160,7 +160,7 @@ export class TrekkaApiPhotoSource implements PhotoSource {
           // If signed URL failed, it might be expired - clear cache and retry once
           if (imageResponse.status === 403 || imageResponse.status === 404) {
             console.warn(`[Trekka API] Signed URL expired for ${fileName}, clearing cache`);
-            signedUrlCache.clear();
+            signedUrlCache.delete(fileName);
             throw new Error('Signed URL expired - will retry');
           }
           throw new Error(`Failed to fetch from signed URL: ${imageResponse.status}`);

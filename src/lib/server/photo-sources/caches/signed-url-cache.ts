@@ -59,6 +59,11 @@ class SignedUrlCache {
     console.debug('[Signed URL Cache] Cleared');
   }
 
+  delete(filename: string): void {
+    this.cache.delete(filename)
+    console.debug(`[Signed URL Cache] Deleted: ${filename}`)
+  }
+
   /**
    * Gets cache statistics
    */
