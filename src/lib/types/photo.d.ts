@@ -1,8 +1,10 @@
+// Represents both photos and videos with location data
 export interface PhotoProps {
-  id: number;
-  url?: string | undefined;
-  name?: string | undefined;
-  takenAt?: any;
-  location: [number, number];
-  mimeType: string | undefined;
+  id: string; // File ID from Drive or filename from trekka-api
+  url?: string;
+  name?: string;
+  takenAt?: string | Date; // Timestamp when media was captured
+  location: [number, number]; // [longitude, latitude]
+  mimeType?: string; // e.g., "image/jpeg", "video/mp4", "image/heic"
+  geoLocation?: string; // Human-readable location string from API
 }

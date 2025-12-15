@@ -1,9 +1,15 @@
-import type { RequestHandler } from "@sveltejs/kit";
-import { drive } from "$lib/server/drive";
+import { error, type RequestHandler } from "@sveltejs/kit";
+import { getPhotoSource, PhotoSourceError } from "$lib/server/photo-source";
 import QuickLRU from "quick-lru";
-import { buffer } from "stream/consumers";
-import heicConvert from "heic-convert";
+import {
+  IMAGE_CACHE_SIZE,
+  IMAGE_CACHE_TTL_MS,
+  IMAGE_CACHE_CLEANUP_INTERVAL_MS
+} from "$lib/config";
 
+/**
+ * Cache entry structure
+ */
 type CacheEntry = {
   data: Uint8Array;
   contentType: string;
@@ -11,93 +17,92 @@ type CacheEntry = {
   fileName: string;
 };
 
-const cache = new QuickLRU<string, CacheEntry>({ maxSize: 50 });
+// LRU cache for image data
+const cache = new QuickLRU<string, CacheEntry>({ maxSize: IMAGE_CACHE_SIZE });
 
-// Cleanup expired cache entries
-setInterval(
-  () => {
-    const now = Date.now();
-    for (const [key, entry] of cache.entries()) {
-      if (entry.expires <= now) cache.delete(key);
+// Cleanup expired cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache.entries()) {
+    if (entry.expires <= now) {
+      cache.delete(key);
     }
-  },
-  10 * 60 * 1000,
-);
+  }
+}, IMAGE_CACHE_CLEANUP_INTERVAL_MS);
 
-const isHeifLike = (t: string) => /heic|heif/i.test(t);
 
+/**
+ * GET /api/photos/image/[fileId]
+ *
+ * Serves image or video file with caching.
+ *
+ * Query Parameters:
+ * - fileName: Name of the file (required for display)
+ * - mimeType: MIME type of the file (required)
+ */
 export const GET: RequestHandler = async ({ params, url }) => {
-  const fileId = params.fileId!;
-  const fileName = url.searchParams.get("fileName")!;
-  const requestedMime = url.searchParams.get("mimeType")!;
+  const fileId = params.fileId;
+  const fileName = url.searchParams.get("fileName") || fileId || "unknown";
+  const requestedMime = url.searchParams.get("mimeType") || "application/octet-stream";
+
+  if (!fileId) {
+    throw error(400, "File ID is required");
+  }
 
   const start = performance.now();
   const now = Date.now();
 
-  // --- Cache hit ---
+  // Check cache first
   const cached = cache.get(fileId);
   if (cached && cached.expires > now) {
     console.debug(`[Image] Cache hit: ${fileId}`);
-    return new Response(new Uint8Array(cached.data), {
+    return new Response(Buffer.from(cached.data), {
       headers: {
         "Content-Type": cached.contentType,
         "Content-Length": String(cached.data.byteLength),
         "Cache-Control": "public, max-age=3600",
-        "Content-Disposition": `inline; filename="${encodeURIComponent(cached.fileName)}"`,
-      },
+        "Content-Disposition": `inline; filename="${encodeURIComponent(cached.fileName)}"`
+      }
     });
   }
 
-  // --- Fetch from Google Drive ---
-  let driveRes;
+  // Fetch from source
+  let imageData: Buffer;
   try {
-    driveRes = await drive.files.get(
-      { fileId, alt: "media" },
-      { responseType: "stream" },
-    );
+    const photoSource = getPhotoSource();
+    imageData = await photoSource.fetchImage(fileId);
+    console.debug(`[Image] Fetched ${imageData.length.toLocaleString()} bytes for ${fileId}`);
   } catch (err) {
-    console.error(`[Image] Drive fetch failed for ${fileId}`, err);
-    return new Response("Drive fetch failed", { status: 500 });
-  }
+    console.error(`[Image] Fetch failed for ${fileId}:`, err);
 
-  const driveData = await buffer(driveRes.data);
-  console.debug(`[Image] Fetched ${driveData.length.toLocaleString()} bytes`);
-
-  let output = driveData;
-  let finalType = requestedMime;
-
-  // --- Convert HEIC/HEIF to JPEG ---
-  if (isHeifLike(requestedMime)) {
-    try {
-      console.debug(`[Image] Converting HEIF → JPEG`);
-      output = await heicConvert({
-        buffer: output,
-        format: "JPEG",
-        quality: 0.9,
-      });
-      finalType = "image/jpeg";
-    } catch (err) {
-      console.error(`[Image] HEIC conversion failed for ${fileName}`, err);
+    if (err instanceof PhotoSourceError) {
+      if (err.message.includes("not found")) {
+        throw error(404, `File not found: ${fileId}`);
+      }
+      throw error(503, "Photo service temporarily unavailable");
     }
+
+    throw error(500, "Failed to fetch image");
   }
 
-  // --- Cache result ---
+  // Cache the result
+  const outputArray = imageData instanceof Uint8Array ? imageData : new Uint8Array(imageData);
   cache.set(fileId, {
-    data: output,
-    contentType: finalType,
+    data: outputArray,
+    contentType: requestedMime,
     fileName,
-    expires: now + 3600 * 1000,
+    expires: now + IMAGE_CACHE_TTL_MS
   });
 
   const totalMs = (performance.now() - start).toFixed(1);
-  console.debug(`[Image] Served ${fileId} (${finalType}) in ${totalMs}ms`);
+  console.debug(`[Image] Served ${fileId} (${requestedMime}) in ${totalMs}ms`);
 
-  return new Response(new Uint8Array(output), {
+  return new Response(Buffer.from(outputArray), {
     headers: {
-      "Content-Type": finalType,
-      "Content-Length": String(output.byteLength),
+      "Content-Type": requestedMime,
+      "Content-Length": String(outputArray.byteLength),
       "Cache-Control": "public, max-age=3600",
-      "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
-    },
+      "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`
+    }
   });
 };

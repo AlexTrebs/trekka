@@ -1,59 +1,43 @@
-import type { RequestHandler } from '@sveltejs/kit';
+import { json, error, type RequestHandler } from '@sveltejs/kit';
+import { geocodingService } from '$lib/server/geocoding';
 
-const cache = new Map<string, { city: string | null; country: string | null }>();
-
+/**
+ * GET /api/reverse-geocode
+ *
+ * Query Parameters:
+ * - lat: Latitude (required)
+ * - lon: Longitude (required)
+ */
 export const GET: RequestHandler = async ({ url }) => {
-  const lat = url.searchParams.get('lat');
-  const lon = url.searchParams.get('lon');
+  const latStr = url.searchParams.get('lat');
+  const lonStr = url.searchParams.get('lon');
 
-  if (!lat || !lon) {
-    return new Response(
-      JSON.stringify({ error: 'Missing lat or lon' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    );
+  if (!latStr || !lonStr) {
+    throw error(400, 'Missing required parameters: lat and lon');
   }
 
-  // Return from cache if we already fetched this location
-  const key = `${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`;
+  const lat = parseFloat(latStr);
+  const lon = parseFloat(lonStr);
 
-  if (cache.has(key)) {
-    return new Response(JSON.stringify(cache.get(key)), {
-      headers: { 'Content-Type': 'application/json', 'X-Cache': 'HIT' }
+  if (isNaN(lat) || isNaN(lon)) {
+    throw error(400, 'Invalid coordinates: lat and lon must be numbers');
+  }
+
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    throw error(400, 'Invalid coordinates: lat must be -90 to 90, lon must be -180 to 180');
+  }
+
+  try {
+    const location = await geocodingService.reverseGeocode(lat, lon);
+
+    console.debug(`[Geocoding API] Queue size: ${geocodingService.getQueueSize()}, Cache size: ${geocodingService.getCacheSize()}`);
+
+    return json({
+      city: location.city || null,
+      country: location.country || null
     });
+  } catch (err) {
+    console.error('[Geocoding API] Failed to geocode location:', err);
+    throw error(500, 'Failed to geocode location');
   }
-
-  const res = await fetch(
-    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
-    {
-      headers: {
-        'User-Agent': 'Trekka',
-        'Accept-Language': 'en',
-        'Referer': 'https://Trekka.co.uk'
-      }
-    }
-  );
-
-
-  if (!res.ok) {
-    return new Response(
-      JSON.stringify({ error: 'Unable to geocode' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const data = await res.json();
-
-  const address = data.address ?? {};
-
-  const result = {
-    city: address.city || address.town || address.village || null,
-    country: address.country || null
-  };
-
-  cache.set(key, result);
-
-  return new Response(
-    JSON.stringify(result),
-    { headers: { 'Content-Type': 'application/json' } }
-  );
 }
