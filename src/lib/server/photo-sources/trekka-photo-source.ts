@@ -42,30 +42,39 @@ export class TrekkaApiPhotoSource implements PhotoSource {
           FormattedDate?: string;
         }> = await response.json();
 
-        // Filter, sort (newest first), and map to GeoJSON
-        const features = images
+        // Filter and sort (newest first)
+        const filteredImages = images
           .filter(img => img.Coordinates?.lng && img.Coordinates?.lat)
           .sort((a, b) => {
             const aTime = a.FormattedDate ? new Date(a.FormattedDate).getTime() : 0;
             const bTime = b.FormattedDate ? new Date(b.FormattedDate).getTime() : 0;
             return bTime - aTime; // Newest first
+          });
+
+        // Fetch signed URLs for all images in parallel
+        const features = await Promise.all(
+          filteredImages.map(async (img) => {
+            const signedUrl = await this.getSignedUrl(img.FileName);
+
+            return {
+              type: "Feature" as const,
+              geometry: {
+                type: "Point" as const,
+                coordinates: [parseFloat(img.Coordinates!.lng), parseFloat(img.Coordinates!.lat)]
+              },
+              properties: {
+                id: img.FileName,
+                url: `/api/photos/image/${encodeURIComponent(img.FileName)}?fileName=${encodeURIComponent(img.FileName)}&mimeType=${encodeURIComponent(img.ContentType)}`,
+                signedUrl, // Direct Firebase URL for client-side loading
+                name: img.FileName,
+                takenAt: img.FormattedDate || "",
+                location: [parseFloat(img.Coordinates!.lng), parseFloat(img.Coordinates!.lat)],
+                mimeType: img.ContentType,
+                geoLocation: img.GeoLocation
+              }
+            };
           })
-          .map(img => ({
-            type: "Feature" as const,
-            geometry: {
-              type: "Point" as const,
-              coordinates: [parseFloat(img.Coordinates!.lng), parseFloat(img.Coordinates!.lat)]
-            },
-            properties: {
-              id: img.FileName,
-              url: `/api/photos/image/${encodeURIComponent(img.FileName)}?fileName=${encodeURIComponent(img.FileName)}&mimeType=${encodeURIComponent(img.ContentType)}`,
-              name: img.FileName,
-              takenAt: img.FormattedDate || "",
-              location: [parseFloat(img.Coordinates!.lng), parseFloat(img.Coordinates!.lat)],
-              mimeType: img.ContentType,
-              geoLocation: img.GeoLocation
-            }
-          }));
+        );
 
         return {
           type: "FeatureCollection",
@@ -80,7 +89,10 @@ export class TrekkaApiPhotoSource implements PhotoSource {
     });
   }
 
-  async fetchImage(fileName: string): Promise<Buffer> {
+  /**
+   * Get signed URL for an image (cached for 14 minutes)
+   */
+  async getSignedUrl(fileName: string): Promise<string> {
     return retryWithBackoff(async () => {
       try {
         // Check signed URL cache first
@@ -124,6 +136,22 @@ export class TrekkaApiPhotoSource implements PhotoSource {
 
           console.debug(`[Trekka API] Got signed URL for ${fileName} (Request ID: ${requestId}, Location: ${geoLocation})`);
         }
+
+        return signedUrl;
+      } catch (error) {
+        if (error instanceof PhotoSourceError) {
+          throw error;
+        }
+        throw new NetworkError("Trekka API", error);
+      }
+    });
+  }
+
+  async fetchImage(fileName: string): Promise<Buffer> {
+    return retryWithBackoff(async () => {
+      try {
+        // Get signed URL (cached)
+        const signedUrl = await this.getSignedUrl(fileName);
 
         // Fetch from the signed URL (no auth needed for signed URLs)
         const imageResponse = await fetch(signedUrl);

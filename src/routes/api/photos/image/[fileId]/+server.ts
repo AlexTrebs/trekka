@@ -34,46 +34,84 @@ setInterval(() => {
 /**
  * GET /api/photos/image/[fileId]
  *
- * Serves image or video file with caching.
+ * Returns a redirect to the image's signed URL for direct browser access.
+ * This avoids proxying the image through the server, improving performance.
  *
  * Query Parameters:
  * - fileName: Name of the file (required for display)
- * - mimeType: MIME type of the file (required)
+ * - mimeType: MIME type of the file (optional, for metadata)
  */
-export const GET: RequestHandler = async ({ params, url }) => {
+export const GET: RequestHandler = async ({ params }) => {
   const fileId = params.fileId;
-  const fileName = url.searchParams.get("fileName") || fileId || "unknown";
-  const requestedMime = url.searchParams.get("mimeType") || "application/octet-stream";
 
   if (!fileId) {
     throw error(400, "File ID is required");
   }
 
   const start = performance.now();
-  const now = Date.now();
 
-  // Check cache first
-  const cached = cache.get(fileId);
-  if (cached && cached.expires > now) {
-    console.debug(`[Image] Cache hit: ${fileId}`);
-    return new Response(Buffer.from(cached.data), {
-      headers: {
-        "Content-Type": cached.contentType,
-        "Content-Length": String(cached.data.byteLength),
-        "Cache-Control": "public, max-age=3600",
-        "Content-Disposition": `inline; filename="${encodeURIComponent(cached.fileName)}"`
-      }
-    });
-  }
-
-  // Fetch from source
-  let imageData: Buffer;
+  // Get signed URL from photo source (cached for 14 minutes)
+  let signedUrl: string;
   try {
     const photoSource = getPhotoSource();
-    imageData = await photoSource.fetchImage(fileId);
-    console.debug(`[Image] Fetched ${imageData.length.toLocaleString()} bytes for ${fileId}`);
+
+    // Use getSignedUrl if available (Trekka API), otherwise fall back to fetchImage (Drive)
+    if (photoSource.getSignedUrl) {
+      signedUrl = await photoSource.getSignedUrl(fileId);
+      const totalMs = (performance.now() - start).toFixed(1);
+      console.debug(`[Image] Redirecting to signed URL for ${fileId} in ${totalMs}ms`);
+
+      // Redirect browser directly to signed URL (saves 1-2 seconds!)
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: signedUrl,
+          "Cache-Control": "public, max-age=840" // 14 minutes (slightly less than signed URL TTL)
+        }
+      });
+    } else {
+      // Fallback for photo sources without signed URL support (e.g., Drive with HEIC conversion)
+      // This still proxies the image, but only for sources that require it
+      const now = Date.now();
+
+      // Check cache first
+      const cached = cache.get(fileId);
+      if (cached && cached.expires > now) {
+        console.debug(`[Image] Cache hit: ${fileId}`);
+        return new Response(Buffer.from(cached.data), {
+          headers: {
+            "Content-Type": cached.contentType,
+            "Content-Length": String(cached.data.byteLength),
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": `inline; filename="${encodeURIComponent(cached.fileName)}"`
+          }
+        });
+      }
+
+      const imageData = await photoSource.fetchImage(fileId);
+      const outputArray = imageData instanceof Uint8Array ? imageData : new Uint8Array(imageData);
+
+      // Cache for sources that require proxying
+      cache.set(fileId, {
+        data: outputArray,
+        contentType: "application/octet-stream",
+        fileName: fileId,
+        expires: now + IMAGE_CACHE_TTL_MS
+      });
+
+      const totalMs = (performance.now() - start).toFixed(1);
+      console.debug(`[Image] Proxied ${fileId} in ${totalMs}ms`);
+
+      return new Response(Buffer.from(outputArray), {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Content-Length": String(outputArray.byteLength),
+          "Cache-Control": "public, max-age=3600"
+        }
+      });
+    }
   } catch (err) {
-    console.error(`[Image] Fetch failed for ${fileId}:`, err);
+    console.error(`[Image] Failed for ${fileId}:`, err);
 
     if (err instanceof PhotoSourceError) {
       if (err.message.includes("not found")) {
@@ -84,25 +122,4 @@ export const GET: RequestHandler = async ({ params, url }) => {
 
     throw error(500, "Failed to fetch image");
   }
-
-  // Cache the result
-  const outputArray = imageData instanceof Uint8Array ? imageData : new Uint8Array(imageData);
-  cache.set(fileId, {
-    data: outputArray,
-    contentType: requestedMime,
-    fileName,
-    expires: now + IMAGE_CACHE_TTL_MS
-  });
-
-  const totalMs = (performance.now() - start).toFixed(1);
-  console.debug(`[Image] Served ${fileId} (${requestedMime}) in ${totalMs}ms`);
-
-  return new Response(Buffer.from(outputArray), {
-    headers: {
-      "Content-Type": requestedMime,
-      "Content-Length": String(outputArray.byteLength),
-      "Cache-Control": "public, max-age=3600",
-      "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`
-    }
-  });
 };
