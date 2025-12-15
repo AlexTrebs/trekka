@@ -66,8 +66,14 @@
   }
 
   function imageUrl(photo: PhotoProps) {
-    const params = new URLSearchParams();
+    // Use direct Firebase signed URL if available (Trekka API)
+    // This bypasses the server proxy for better performance
+    if (photo.signedUrl) {
+      return photo.signedUrl;
+    }
 
+    // Fallback to server-proxied URL (Drive photos)
+    const params = new URLSearchParams();
     params.set("mimeType", photo.mimeType ?? "image/jpeg");
     params.set("fileName", photo.name ?? "");
 

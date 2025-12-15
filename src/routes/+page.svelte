@@ -52,7 +52,11 @@
     }
   }
 
-  // Opens a photo in the sidebar popup and animates the map to its location.
+  /**
+   * Opens a photo in the sidebar popup and animates the map to its location.
+   *
+   * @param photoId - The unique identifier of the photo to open
+   */
   function openPhoto(photoId: string) {
     if (!photos) return;
 
@@ -70,12 +74,21 @@
     });
   }
 
+  /**
+   * Navigates to the previous photo (older images, higher index)
+   */
   const onPrevPhoto = () =>
     navigateToPrevious(photos, selectedPhotoIndex!, openPhoto);
 
+  /**
+   * Navigates to the next photo (newer images, lower index)
+   */
   const onNextPhoto = () =>
     navigateToNext(photos, selectedPhotoIndex!, openPhoto);
 
+  /**
+   * Opens the most recently taken photo
+   */
   const openMostRecent = () => openMostRecentPhoto(photos, openPhoto);
 
   onMount(async () => {
@@ -178,7 +191,7 @@
         }
       });
 
-      const recent = findMostRecentPhoto(photos);
+      const recent = openMostRecentPhoto(photos);
       if (recent) {
         const preload = new Image();
         preload.src = `/api/photos/image/${recent.properties.id}`;
