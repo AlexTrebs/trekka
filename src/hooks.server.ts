@@ -13,11 +13,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   // Validate session and add user to locals
   if (sessionToken) {
-    const username = await validateSessionToken(sessionToken);
-    if (username) {
+    const payload = await validateSessionToken(sessionToken);
+    if (payload) {
       event.locals.user = {
-        username,
-        isAdmin: true
+        username: payload.username,
+        isAdmin: payload.isAdmin
       };
     }
   }

@@ -56,7 +56,7 @@ class GeocodingService {
    * Processes the request queue with rate limiting
    */
   private async processQueue(): Promise<void> {
-    if (this.processing || this.queue.length === 0) {
+    if (this.processing) {
       return;
     }
 
@@ -94,6 +94,10 @@ class GeocodingService {
     }
 
     this.processing = false;
+
+    if (this.queue.length > 0) {
+      void this.processQueue();
+    }
   }
 
   /**

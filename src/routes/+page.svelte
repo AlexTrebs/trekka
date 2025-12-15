@@ -11,7 +11,6 @@
   import type { PhotoProps } from "$lib/types/photo";
   import { calculateSunPosition } from "$lib/utils/sun-position";
   import {
-    findMostRecentPhoto,
     openMostRecentPhoto,
     navigateToPrevious,
     navigateToNext,
@@ -190,12 +189,6 @@
           });
         }
       });
-
-      const recent = openMostRecentPhoto(photos);
-      if (recent) {
-        const preload = new Image();
-        preload.src = `/api/photos/image/${recent.properties.id}`;
-      }
     });
   });
 
