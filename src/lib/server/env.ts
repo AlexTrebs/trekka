@@ -1,7 +1,5 @@
 import {
   GOOGLE_API_KEY,
-  GOOGLE_CLIENT_EMAIL,
-  GOOGLE_PRIVATE_KEY,
   GOOGLE_FOLDER_ID,
   API_SOURCE,
   TREKKA_API_URL,
@@ -16,8 +14,6 @@ export type ApiSource = "drive" | "trekka-api";
 export interface EnvConfig {
   apiSource: ApiSource;
   googleApiKey?: string;
-  googleClientEmail?: string;
-  googlePrivateKey?: string;
   googleFolderId?: string;
   trekkaApiUrl?: string;
   trekkaApiKey?: string;
@@ -50,8 +46,6 @@ function validateEnv(): EnvConfig {
     const missing: string[] = [];
 
     if (!GOOGLE_API_KEY) missing.push("GOOGLE_API_KEY");
-    if (!GOOGLE_CLIENT_EMAIL) missing.push("GOOGLE_CLIENT_EMAIL");
-    if (!GOOGLE_PRIVATE_KEY) missing.push("GOOGLE_PRIVATE_KEY");
     if (!GOOGLE_FOLDER_ID) missing.push("GOOGLE_FOLDER_ID");
 
     if (missing.length > 0) {
@@ -62,8 +56,6 @@ function validateEnv(): EnvConfig {
     }
 
     config.googleApiKey = GOOGLE_API_KEY;
-    config.googleClientEmail = GOOGLE_CLIENT_EMAIL;
-    config.googlePrivateKey = GOOGLE_PRIVATE_KEY;
     config.googleFolderId = GOOGLE_FOLDER_ID;
   }
 
