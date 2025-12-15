@@ -11,11 +11,13 @@
   export let hasNext: boolean = false;
 
   let locationLoad = false;
-  let locationData: { city?: string; country?: string } = {};
+  let locationString: string | null = null;
   let error: string | null = null;
 
   let loadingImage = true;
-  let currentPhotoId: number | null = null;
+  let currentPhotoId: string | null = null;
+
+  $: isVideo = selectedPhoto?.mimeType?.startsWith("video/") ?? false;
 
   $: if (selectedPhoto && selectedPhoto.id !== currentPhotoId) {
     loadingImage = true;
@@ -29,23 +31,33 @@
     try {
       const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
       const data = await res.json();
-      locationData = { city: data.city, country: data.country };
+      let locationData = { city: data.city, country: data.country };
+      locationString = `${locationData.city}${
+        locationData.city && locationData.country ? ", " : ""
+      }${locationData.country}`;
     } catch (err) {
       console.error(err);
       error = "Failed to load location";
-      locationData = {};
+      locationString = null;
     } finally {
       locationLoad = false;
     }
   }
 
   $: if (selectedPhoto?.location?.length === 2) {
-    fetchLocation(selectedPhoto.location[0], selectedPhoto.location[1]);
+    if (selectedPhoto.geoLocation) {
+      locationString = selectedPhoto.geoLocation;
+      locationLoad = false;
+      error = null;
+    } else {
+      locationString = null;
+      fetchLocation(selectedPhoto.location[0], selectedPhoto.location[1]);
+    }
   }
 
   function closePopup() {
     selectedPhoto = null;
-    locationData = {};
+    locationString = null;
     loadingImage = true;
   }
 
@@ -57,7 +69,7 @@
     const params = new URLSearchParams();
 
     params.set("mimeType", photo.mimeType ?? "image/jpeg");
-    params.set("mimeType", photo.name ?? "");
+    params.set("fileName", photo.name ?? "");
 
     return `/api/photos/image/${photo.id}?${params.toString()}`;
   }
@@ -84,41 +96,60 @@
     </div>
 
     <div class="popup-body">
-      <a
-        class="image-wrapper"
-        href={imageUrl(selectedPhoto)}
-        target="_blank"
-        rel="noopener noreferrer"
-        role="button"
-        aria-label="Open full image"
-        draggable="false"
-      >
-        {#if loadingImage}
-          <div class="loading-overlay">
-            <div class="spinner"></div>
-          </div>
-        {/if}
-        <img
-          src={imageUrl(selectedPhoto)}
-          alt={selectedPhoto.name}
-          class="popup-img"
+      {#if isVideo}
+        <div class="media-wrapper">
+          {#if loadingImage}
+            <div class="skeleton-wrapper">
+              <div class="skeleton skeleton-video"></div>
+              <div class="loading-text">Loading video...</div>
+            </div>
+          {/if}
+          <video
+            src={imageUrl(selectedPhoto)}
+            class="popup-video"
+            class:hidden={loadingImage}
+            controls
+            preload="metadata"
+            on:loadeddata={handleImageLoad}
+          >
+            <track kind="captions" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      {:else}
+        <a
+          class="media-wrapper"
+          href={imageUrl(selectedPhoto)}
+          target="_blank"
+          rel="noopener noreferrer"
+          role="button"
+          aria-label="Open full image"
           draggable="false"
-          on:load={handleImageLoad}
-        />
-      </a>
+        >
+          {#if loadingImage}
+            <div class="skeleton-wrapper">
+              <div class="skeleton skeleton-image"></div>
+              <div class="loading-text">Loading image...</div>
+            </div>
+          {/if}
+          <img
+            src={imageUrl(selectedPhoto)}
+            alt={selectedPhoto.name}
+            class="popup-img"
+            class:hidden={loadingImage}
+            draggable="false"
+            on:load={handleImageLoad}
+          />
+        </a>
+      {/if}
       <div class="photo-details">
         <p class="taken-at">Taken at: {selectedPhoto.takenAt}</p>
         {#if locationLoad}
           <p class="loading">Loading location…</p>
         {:else if error}
           <p class="error">{error}</p>
-        {:else if locationData.city || locationData.country}
-          <p class="location">
-            Location: {locationData.city}{locationData.city &&
-            locationData.country
-              ? ", "
-              : ""}{locationData.country}
-          </p>
+        {:else if locationString}
+          <p class="location">Location: {locationString}</p>
         {/if}
       </div>
     </div>
@@ -187,7 +218,7 @@
     max-height: calc(100% - 80px - 1rem);
   }
 
-  .image-wrapper {
+  .media-wrapper {
     position: relative;
     display: flex;
     justify-content: center;
@@ -195,11 +226,68 @@
     max-height: calc(100% - 4rem);
   }
 
-  .popup-img {
+  .popup-img,
+  .popup-video {
     max-width: 100%;
     border-radius: 12px;
     object-fit: contain;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+
+  .popup-video {
+    max-height: 100%;
+  }
+
+  .hidden {
+    display: none;
+  }
+
+  /* Skeleton loading states */
+  .skeleton-wrapper {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s ease-in-out infinite;
+    border-radius: 12px;
+  }
+
+  .skeleton-image {
+    width: 300px;
+    height: 400px;
+    max-width: 100%;
+  }
+
+  .skeleton-video {
+    width: 300px;
+    height: 200px;
+    max-width: 100%;
+  }
+
+  .loading-text {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  @keyframes skeleton-loading {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 
   .photo-details {
@@ -247,32 +335,6 @@
   .nav-btn:hover {
     background: #555;
     transform: scale(1.05);
-  }
-
-  /* Loading overlay */
-  .loading-overlay {
-    position: absolute;
-    inset: 0; /* shorthand for top/left/right/bottom: 0 */
-    background: rgba(0, 0, 0, 0.6); /* slightly transparent grey */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1;
-  }
-
-  .spinner {
-    width: 60px;
-    height: 60px;
-    border: 6px solid rgba(255, 255, 255, 0.2);
-    border-top-color: #ffffff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   .taken-at,

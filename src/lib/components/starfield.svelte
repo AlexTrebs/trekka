@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { STARFIELD_STAR_COUNT } from "$lib/config";
 
   onMount(() => {
     const starfield = document.getElementById("starfield");
     if (!starfield) return;
 
-    const numStars = 200;
-    for (let i = 0; i < numStars; i++) {
+    for (let i = 0; i < STARFIELD_STAR_COUNT; i++) {
       const star = document.createElement("div");
       star.classList.add("star");
       star.style.left = Math.random() * 100 + "%";

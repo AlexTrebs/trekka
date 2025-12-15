@@ -1,12 +1,28 @@
 <script lang="ts">
   import type { FeatureCollection, Point } from "geojson";
   import * as maplibregl from "maplibre-gl";
+
   import { onMount, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
+
   import marker from "$lib/assets/marker.png";
   import Popup from "$lib/components/popup.svelte";
   import Starfield from "$lib/components/starfield.svelte";
   import type { PhotoProps } from "$lib/types/photo";
+  import { calculateSunPosition } from "$lib/utils/sun-position";
+  import {
+    findMostRecentPhoto,
+    openMostRecentPhoto,
+    navigateToPrevious,
+    navigateToNext,
+    preparePhotoOpen,
+  } from "$lib/utils/photo-navigation";
+
+  import {
+    SUN_UPDATE_INTERVAL_MS,
+    MAP_CAMERA_ANIMATION_DURATION_MS,
+    COUNTRY_BORDER_ZOOM_THRESHOLD,
+  } from "$lib/config";
 
   let selectedPhoto: PhotoProps | null = null;
   let selectedPhotoIndex: number | null = null;
@@ -20,18 +36,14 @@
   let sunRotation = 90;
   let sunInterval: number;
 
+  /**
+   * Updates the sun's position on the globe based on current UTC time and day of year.
+   */
   function updateSunPosition() {
-    const now = new Date();
-    const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 0));
-    const dayOfYear = Math.floor(
-      (now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
-    );
-    const declination =
-      23.44 * Math.sin(((2 * Math.PI) / 365) * (dayOfYear - 80));
-    const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60;
-    const hourAngle = (utcHours / 24) * 360;
-    sunRotation = 90 - declination;
-    lightRotation = hourAngle;
+    const position = calculateSunPosition();
+    sunRotation = position.sunRotation;
+    lightRotation = position.lightRotation;
+
     if (map) {
       map.setLight({
         anchor: "map",
@@ -40,41 +52,35 @@
     }
   }
 
-  function openPhoto(photoId: number) {
+  // Opens a photo in the sidebar popup and animates the map to its location.
+  function openPhoto(photoId: string) {
     if (!photos) return;
-    const index = photos.features.findIndex((f) => f.properties.id === photoId);
-    if (index === -1) return;
-    selectedPhotoIndex = index;
-    selectedPhoto = photos.features[index].properties;
-    hasPrev = index > 0;
-    hasNext = index < photos.features.length - 1;
-    map.easeTo({ center: selectedPhoto.location, duration: 1200 });
+
+    const result = preparePhotoOpen(photos, photoId);
+    if (!result) return;
+
+    selectedPhotoIndex = result.navigation.index;
+    selectedPhoto = result.navigation.photo;
+    hasNext = result.navigation.hasNext;
+    hasPrev = result.navigation.hasPrev;
+
+    map.easeTo({
+      center: result.location,
+      duration: MAP_CAMERA_ANIMATION_DURATION_MS,
+    });
   }
 
   const onPrevPhoto = () =>
-    hasPrev &&
-    openPhoto(photos.features[selectedPhotoIndex! - 1].properties.id);
-  const onNextPhoto = () =>
-    hasNext &&
-    openPhoto(photos.features[selectedPhotoIndex! + 1].properties.id);
+    navigateToPrevious(photos, selectedPhotoIndex!, openPhoto);
 
-  function getMostRecentPhoto() {
-    if (!photos?.features?.length) return null;
-    return photos.features.reduce((a, b) =>
-      new Date(a.properties.takenAt).getTime() >
-      new Date(b.properties.takenAt).getTime()
-        ? a
-        : b,
-    );
-  }
-  const openMostRecent = () => {
-    const r = getMostRecentPhoto();
-    if (r) openPhoto(r.properties.id);
-  };
+  const onNextPhoto = () =>
+    navigateToNext(photos, selectedPhotoIndex!, openPhoto);
+
+  const openMostRecent = () => openMostRecentPhoto(photos, openPhoto);
 
   onMount(async () => {
     updateSunPosition();
-    sunInterval = window.setInterval(updateSunPosition, 60_000);
+    sunInterval = window.setInterval(updateSunPosition, SUN_UPDATE_INTERVAL_MS);
 
     const photoPromise = fetch("/api/photos").then((r) => r.json());
 
@@ -155,7 +161,10 @@
 
       // lazy load country borders when zoomed in
       map.on("moveend", async () => {
-        if (!map.getSource("countries") && map.getZoom() > 1.5) {
+        if (
+          !map.getSource("countries") &&
+          map.getZoom() > COUNTRY_BORDER_ZOOM_THRESHOLD
+        ) {
           const data = await fetch(
             "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson",
           ).then((r) => r.json());
@@ -169,7 +178,7 @@
         }
       });
 
-      const recent = getMostRecentPhoto();
+      const recent = findMostRecentPhoto(photos);
       if (recent) {
         const preload = new Image();
         preload.src = `/api/photos/image/${recent.properties.id}`;
