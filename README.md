@@ -48,7 +48,7 @@ Create a `.env` file in the root (see `.env.example` for template):
 # JWT Secret for session tokens (generate with: openssl rand -base64 32)
 JWT_SECRET=your-secure-random-string
 
-# Photo source: "drive" or "trekka"
+# Photo source: "drive" or "trekka-api"
 API_SOURCE=drive
 ```
 
@@ -63,7 +63,7 @@ GOOGLE_API_KEY=your-google-drive-api-key
 ### Option B: Trekka API Backend
 
 ```env
-API_SOURCE=trekka
+API_SOURCE=trekka-api
 TREKKA_API_URL=https://your-trekka-api.com
 TREKKA_API_KEY=your-trekka-api-key
 ```
